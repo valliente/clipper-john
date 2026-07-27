@@ -4,7 +4,7 @@ import shutil
 
 def get_binary_path(binary_name):
     """
-    Finds the binary either in PyInstaller's temp folder, local directory, or PATH.
+    Finds the binary either in PyInstaller's temp folder, src/utils, local directory, or PATH.
     """
     if sys.platform == 'win32' and not binary_name.endswith('.exe'):
         binary_name += '.exe'
@@ -15,6 +15,11 @@ def get_binary_path(binary_name):
         bundled_path = os.path.join(base_path, binary_name)
         if os.path.exists(bundled_path):
             return bundled_path
+
+    # Check src/utils folder
+    utils_path = os.path.join(os.getcwd(), "src", "utils", binary_name)
+    if os.path.exists(utils_path):
+        return utils_path
             
     # Check local workspace
     local_path = os.path.join(os.getcwd(), binary_name)

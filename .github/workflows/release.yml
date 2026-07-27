@@ -48,7 +48,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           name: "The Clipper John Beta 0.1"
-          prerelease: true
+          prerelease: false
           files: TheClipperJohn-Windows-Beta-0.1.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,5 @@
+PySide6
+librosa
+scipy
+numpy
+yt-dlp

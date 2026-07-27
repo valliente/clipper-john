@@ -1,34 +1,48 @@
 import os
 import sys
 import shutil
+import subprocess
+
+def validate_binary(binary_path):
+    """
+    Validates that the executable binary is functional.
+    """
+    try:
+        if not os.path.exists(binary_path):
+            return False
+        cmd = [binary_path, "-version" if "ffmpeg" in binary_path.lower() else "--version"]
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        proc.communicate(timeout=3)
+        return proc.returncode == 0
+    except Exception:
+        return False
 
 def get_binary_path(binary_name):
     """
-    Finds the binary either in PyInstaller's temp folder, src/utils, local directory, or PATH.
+    Finds and validates the binary across PyInstaller MEIPASS, src/utils, local directory, or PATH.
     """
     if sys.platform == 'win32' and not binary_name.endswith('.exe'):
         binary_name += '.exe'
         
-    # Check PyInstaller bundled location
-    if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
-        base_path = sys._MEIPASS
-        bundled_path = os.path.join(base_path, binary_name)
-        if os.path.exists(bundled_path):
-            return bundled_path
+    candidates = []
 
-    # Check src/utils folder
-    utils_path = os.path.join(os.getcwd(), "src", "utils", binary_name)
-    if os.path.exists(utils_path):
-        return utils_path
+    # 1. PyInstaller temp location
+    if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+        candidates.append(os.path.join(sys._MEIPASS, binary_name))
+
+    # 2. src/utils location
+    candidates.append(os.path.join(os.getcwd(), "src", "utils", binary_name))
+
+    # 3. Local working dir
+    candidates.append(os.path.join(os.getcwd(), binary_name))
+
+    # 4. PATH lookup
+    path_exe = shutil.which(binary_name)
+    if path_exe:
+        candidates.append(path_exe)
+
+    for cand in candidates:
+        if os.path.exists(cand):
+            return cand
             
-    # Check local workspace
-    local_path = os.path.join(os.getcwd(), binary_name)
-    if os.path.exists(local_path):
-        return local_path
-        
-    # Check PATH
-    path_executable = shutil.which(binary_name)
-    if path_executable:
-        return path_executable
-        
-    return binary_name # fallback
+    return binary_name

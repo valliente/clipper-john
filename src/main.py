@@ -1,10 +1,10 @@
 import sys
 import os
+import gc
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                                QHBoxLayout, QPushButton, QLabel, QLineEdit, 
                                QFileDialog, QProgressBar, QListWidget, QListWidgetItem, 
-                               QSlider, QComboBox, QDoubleSpinBox, QMessageBox, QGroupBox,
-                               QCheckBox, QFrame)
+                               QSlider, QComboBox, QMessageBox, QGroupBox, QFrame)
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QPainter, QColor, QPen
 
@@ -13,13 +13,10 @@ from engine.signal_analyzer import SignalAnalyzer
 from engine.renderer import Renderer
 
 class WaveformWidget(QFrame):
-    """
-    Visual waveform preview timeline component.
-    """
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.points = [0.2, 0.4, 0.7, 0.9, 0.5, 0.3, 0.8, 0.6, 0.4, 0.9, 0.3, 0.1]
-        self.setFixedHeight(60)
+        self.points = [0.2, 0.4, 0.7, 0.9, 0.5, 0.3, 0.8, 0.6, 0.4, 0.9]
+        self.setFixedHeight(50)
         self.setStyleSheet("background-color: #1e293b; border: 1px solid #334155; border-radius: 6px;")
 
     def set_waveform(self, points):
@@ -47,15 +44,13 @@ class WaveformWidget(QFrame):
             x2 = (i + 1) * dx
             y2 = h / 2.0 - (self.points[i + 1] * (h / 2.0 - 4))
             painter.drawLine(int(x1), int(y1), int(x2), int(y2))
-
-            # Mirror bottom
             y1_b = h / 2.0 + (self.points[i] * (h / 2.0 - 4))
             y2_b = h / 2.0 + (self.points[i + 1] * (h / 2.0 - 4))
             painter.drawLine(int(x1), int(y1_b), int(x2), int(y2_b))
 
 class AnalysisWorker(QThread):
     progress = Signal(str, int)
-    finished = Signal(list, list, str) # clips, waveform, target_file
+    finished = Signal(list, list, str)
     error = Signal(str)
 
     def __init__(self, url=None, file_path=None, sensitivity=1.0):
@@ -72,7 +67,7 @@ class AnalysisWorker(QThread):
                 os.makedirs(self.output_dir)
 
             if self.url:
-                self.progress.emit("Downloading video stream via yt-dlp...", 15)
+                self.progress.emit("Downloading stream via yt-dlp...", 15)
                 downloader = Downloader()
                 target_file = downloader.download(self.url, self.output_dir)
                 if not target_file:
@@ -83,29 +78,30 @@ class AnalysisWorker(QThread):
                 self.error.emit("Invalid video file path.")
                 return
 
-            self.progress.emit("Analyzing audio waveform (RMS + Speech Density VAD)...", 45)
+            self.progress.emit("Scanning audio PCM stream via NumPy vectors...", 45)
             analyzer = SignalAnalyzer()
             clips = analyzer.analyze_audio(target_file, sensitivity=self.sensitivity)
             
-            self.progress.emit("Generating visual timeline waveform...", 75)
-            wf_points = analyzer.generate_waveform_points(target_file, num_points=120)
+            self.progress.emit("Generating visual waveform preview...", 85)
+            wf_points = analyzer.generate_waveform_points(target_file, num_points=100)
 
             self.progress.emit("Analysis Complete!", 100)
             self.finished.emit(clips, wf_points, target_file)
         except Exception as e:
             self.error.emit(str(e))
+        finally:
+            gc.collect()
 
 class RenderWorker(QThread):
     progress = Signal(str, int)
     finished = Signal(list)
     error = Signal(str)
 
-    def __init__(self, target_file, selected_clips, aspect_ratio="9:16", use_gpu=True):
+    def __init__(self, target_file, selected_clips, aspect_ratio="9:16"):
         super().__init__()
         self.target_file = target_file
         self.selected_clips = selected_clips
         self.aspect_ratio = aspect_ratio
-        self.use_gpu = use_gpu
         self.output_dir = os.path.join(os.getcwd(), "output")
 
     def run(self):
@@ -116,9 +112,9 @@ class RenderWorker(QThread):
 
             for i, clip in enumerate(self.selected_clips):
                 out_path = os.path.join(self.output_dir, f"clipper_john_clip_{i+1}_score_{int(clip['score'])}.mp4")
-                self.progress.emit(f"Rendering Short {i+1}/{total} (Smart Cropping + GPU={self.use_gpu})...", int(10 + (i * 80 / total)))
+                self.progress.emit(f"Rendering Short {i+1}/{total} (FFmpeg fastdecode)...", int(10 + (i * 85 / total)))
                 
-                success = renderer.render_clip(self.target_file, clip['start'], clip['end'], out_path, self.aspect_ratio, use_gpu=self.use_gpu)
+                success = renderer.render_clip(self.target_file, clip['start'], clip['end'], out_path, self.aspect_ratio)
                 if success:
                     results.append(out_path)
 
@@ -126,16 +122,18 @@ class RenderWorker(QThread):
             self.finished.emit(results)
         except Exception as e:
             self.error.emit(str(e))
+        finally:
+            gc.collect()
 
 class TheClipperJohnApp(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("The Clipper John - Beta 0.1.1")
-        self.setMinimumSize(950, 720)
+        self.setWindowTitle("The Clipper John - 0.1.201")
+        self.setMinimumSize(900, 650)
         self.setStyleSheet("""
             QMainWindow { background-color: #0f172a; color: #f8fafc; }
             QLabel { color: #f8fafc; font-size: 13px; }
-            QGroupBox { color: #38bdf8; font-weight: bold; border: 1px solid #334155; border-radius: 8px; margin-top: 10px; padding-top: 10px; }
+            QGroupBox { color: #38bdf8; font-weight: bold; border: 1px solid #334155; border-radius: 8px; margin-top: 8px; padding-top: 8px; }
             QLineEdit { background-color: #1e293b; color: #f8fafc; border: 1px solid #334155; padding: 8px; border-radius: 6px; }
             QPushButton { background-color: #38bdf8; color: #0f172a; font-weight: bold; padding: 8px 14px; border-radius: 6px; }
             QPushButton:hover { background-color: #7dd3fc; }
@@ -143,28 +141,27 @@ class TheClipperJohnApp(QMainWindow):
             QProgressBar { border: 1px solid #334155; border-radius: 6px; text-align: center; color: #f8fafc; font-weight: bold; }
             QProgressBar::chunk { background-color: #4ade80; }
             QListWidget { background-color: #1e293b; color: #f8fafc; border: 1px solid #334155; border-radius: 6px; padding: 4px; }
-            QCheckBox { color: #f8fafc; font-weight: bold; }
         """)
 
         main_widget = QWidget()
         self.setCentralWidget(main_widget)
         layout = QVBoxLayout(main_widget)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(12)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(10)
 
         # Header
-        title = QLabel("The Clipper John - Beta 0.1.1")
-        title.setStyleSheet("font-size: 26px; font-weight: bold; color: #38bdf8;")
+        title = QLabel("The Clipper John - 0.1.201")
+        title.setStyleSheet("font-size: 24px; font-weight: bold; color: #38bdf8;")
         title.setAlignment(Qt.AlignCenter)
         layout.addWidget(title)
 
-        subtitle = QLabel("Computer Vision Face-Tracking & Hardware Accelerated Podcast Clipper")
+        subtitle = QLabel("High-Performance Audio Signal Scanner & FFmpeg Video Clipper")
         subtitle.setStyleSheet("font-size: 12px; color: #94a3b8;")
         subtitle.setAlignment(Qt.AlignCenter)
         layout.addWidget(subtitle)
 
         # Input Group
-        input_group = QGroupBox("1. Video Input Source")
+        input_group = QGroupBox("1. Video Source")
         input_layout = QVBoxLayout(input_group)
 
         url_layout = QHBoxLayout()
@@ -184,8 +181,8 @@ class TheClipperJohnApp(QMainWindow):
 
         layout.addWidget(input_group)
 
-        # Controls & Settings Group
-        controls_group = QGroupBox("2. Signal & Hardware Settings")
+        # Controls Group
+        controls_group = QGroupBox("2. Parameters")
         controls_layout = QHBoxLayout(controls_group)
 
         sens_vbox = QVBoxLayout()
@@ -202,27 +199,20 @@ class TheClipperJohnApp(QMainWindow):
         crop_vbox = QVBoxLayout()
         crop_vbox.addWidget(QLabel("Aspect Ratio:"))
         self.aspect_combo = QComboBox()
-        self.aspect_combo.addItems(["9:16 (Smart Face-Crop)", "1:1 (Square)", "16:9 (Standard)"])
+        self.aspect_combo.addItems(["9:16 (Vertical Short)", "1:1 (Square)", "16:9 (Standard)"])
         crop_vbox.addWidget(self.aspect_combo)
         controls_layout.addLayout(crop_vbox)
 
-        # Hardware Acceleration Checkbox
-        gpu_vbox = QVBoxLayout()
-        self.gpu_check = QCheckBox("GPU Hardware Accel (NVENC/QSV/AMF)")
-        self.gpu_check.setChecked(True)
-        gpu_vbox.addWidget(self.gpu_check)
-        controls_layout.addLayout(gpu_vbox)
-
         layout.addWidget(controls_group)
 
-        # Analyze Button
-        self.analyze_btn = QPushButton("Analyze Audio Waveform & Detect Candidate Shorts")
+        # Analyze Action Button
+        self.analyze_btn = QPushButton("Run Fast Audio Signal Scan")
         self.analyze_btn.setStyleSheet("background-color: #38bdf8; color: #0f172a; font-size: 14px; font-weight: bold;")
         self.analyze_btn.clicked.connect(self.run_analysis)
         layout.addWidget(self.analyze_btn)
 
-        # Timeline Waveform Display
-        layout.addWidget(QLabel("Audio Waveform Density Preview:"))
+        # Waveform Display
+        layout.addWidget(QLabel("Waveform Energy Profile:"))
         self.waveform_widget = WaveformWidget()
         layout.addWidget(self.waveform_widget)
 
@@ -242,13 +232,13 @@ class TheClipperJohnApp(QMainWindow):
         self.clips_list = QListWidget()
         layout.addWidget(self.clips_list)
 
-        # Render & Merge Action Buttons
+        # Render & Merge Buttons
         render_layout = QHBoxLayout()
         self.render_btn = QPushButton("Export Selected Shorts")
         self.render_btn.setStyleSheet("background-color: #4ade80; color: #0f172a; font-size: 14px; font-weight: bold;")
         self.render_btn.clicked.connect(self.run_render)
 
-        self.merge_btn = QPushButton("Merge Selected Clips into Single Video")
+        self.merge_btn = QPushButton("Merge Selected Clips")
         self.merge_btn.setStyleSheet("background-color: #f59e0b; color: #0f172a; font-size: 14px; font-weight: bold;")
         self.merge_btn.clicked.connect(self.merge_clips)
 
@@ -324,7 +314,7 @@ class TheClipperJohnApp(QMainWindow):
             item.setCheckState(Qt.Checked)
             self.clips_list.addItem(item)
 
-        QMessageBox.information(self, "Analysis Done", f"Detected {len(clips)} candidate short segments!")
+        QMessageBox.information(self, "Analysis Complete", f"Fast scan detected {len(clips)} candidate short segments!")
 
     def select_all_clips(self):
         for i in range(self.clips_list.count()):
@@ -336,7 +326,7 @@ class TheClipperJohnApp(QMainWindow):
 
     def run_render(self):
         if not self.target_file_path or not self.detected_clips:
-            QMessageBox.warning(self, "No Analysis Data", "Please run audio waveform analysis first.")
+            QMessageBox.warning(self, "No Analysis Data", "Please run audio signal scan first.")
             return
 
         selected_clips = []
@@ -351,9 +341,8 @@ class TheClipperJohnApp(QMainWindow):
 
         aspect_mapping = {0: "9:16", 1: "1:1", 2: "16:9"}
         aspect_ratio = aspect_mapping.get(self.aspect_combo.currentIndex(), "9:16")
-        use_gpu = self.gpu_check.isChecked()
 
-        self.render_worker = RenderWorker(self.target_file_path, selected_clips, aspect_ratio, use_gpu)
+        self.render_worker = RenderWorker(self.target_file_path, selected_clips, aspect_ratio)
         self.render_worker.progress.connect(self.update_progress)
         self.render_worker.finished.connect(self.on_render_finished)
         self.render_worker.error.connect(self.on_error)
@@ -361,7 +350,7 @@ class TheClipperJohnApp(QMainWindow):
 
     def on_render_finished(self, results):
         self.rendered_clip_paths = results
-        QMessageBox.information(self, "Success", f"Exported {len(results)} short clips using GPU/Hardware Acceleration!")
+        QMessageBox.information(self, "Export Complete", f"Exported {len(results)} short clips using high-speed FFmpeg pipeline!")
 
     def merge_clips(self):
         if not self.rendered_clip_paths:

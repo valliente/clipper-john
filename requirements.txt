@@ -1,7 +1,5 @@
 PySide6
-librosa
 scipy
 numpy
 yt-dlp
-opencv-python-headless
 pyinstaller

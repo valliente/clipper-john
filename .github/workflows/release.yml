@@ -1,4 +1,4 @@
-name: Build and Release The Clipper John
+name: Build and Release The Clipper John Beta 0.1.1
 
 on:
   push:
@@ -26,11 +26,10 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Download FFmpeg and yt-dlp Binaries
+      - name: Download Static Binaries
         shell: powershell
         run: |
           Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" -OutFile "src/utils/yt-dlp.exe"
-          # Download standalone ffmpeg
           Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile "ffmpeg.zip"
           Expand-Archive -Path "ffmpeg.zip" -DestinationPath "ffmpeg_extracted"
           Get-ChildItem -Path "ffmpeg_extracted" -Filter "ffmpeg.exe" -Recurse | Copy-Item -Destination "src/utils/ffmpeg.exe"
@@ -42,13 +41,13 @@ jobs:
       - name: Create Zip Archive
         shell: powershell
         run: |
-          Compress-Archive -Path "dist/TheClipperJohn/*" -DestinationPath "TheClipperJohn-Windows-Beta-0.1.zip"
+          Compress-Archive -Path "dist/TheClipperJohn/*" -DestinationPath "TheClipperJohn-Windows-Beta-0.1.1.zip"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: "The Clipper John Beta 0.1"
+          name: "The Clipper John Beta 0.1.1"
           prerelease: false
-          files: TheClipperJohn-Windows-Beta-0.1.zip
+          files: TheClipperJohn-Windows-Beta-0.1.1.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
